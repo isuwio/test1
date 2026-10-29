@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Medical Lab 3D | 간호 × 공학 융합 실험 게임</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        mint: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            400: '#34d399',
+                            500: '#10b981',
+                            600: '#059669',
+                        },
+                        slate: {
+                            850: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Three.js & Lucide Icons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Modern Crisp Glass & Shadows */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08);
+        }
+
+        .glass-card-dark {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.35);
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px 0 rgba(16, 185, 129, 0.45);
+        }
+
+        /* Pulse Animations */
+        @keyframes subtle-glow {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.03); }
+        }
+        .pulse-glow {
+            animation: subtle-glow 2s infinite ease-in-out;
+        }
+
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative flex flex-col justify-between bg-slate-50 text-slate-900">
+
+    <!-- TOP NAVIGATION / HUD HEADER -->
+    <header class="z-20 px-6 py-3.5 glass-card flex items-center justify-between border-b border-slate-200/80">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-mint-500 text-white flex items-center justify-center font-black shadow-md shadow-mint-500/30">
+                <i data-lucide="activity" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-base tracking-tight text-slate-900 flex items-center gap-2">
+                    SMART MEDICAL LAB <span class="text-[11px] font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full border border-mint-200">간호 × 공학 융합 3D</span>
+                </h1>
+                <p class="text-xs text-slate-500">간호학(1지망) + 전기전자 · 기계 · 화학공학 · 생명공학 · AI 융합 실험실</p>
+            </div>
+        </div>
+
+        <!-- Real-Time HUD Stats -->
+        <div class="flex items-center gap-4">
+            <div class="hidden md:flex items-center gap-3 text-xs font-medium">
+                <div class="bg-white/90 px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2">
+                    <span class="text-slate-400">현재 미션:</span>
+                    <span id="hud-stage-name" class="font-bold text-mint-600">미션 준비</span>
+                </div>
+                <div class="bg-white/90 px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2">
+                    <span class="text-slate-400">점수:</span>
+                    <span id="hud-score" class="font-bold text-amber-500 font-mono text-sm">0</span>
+                </div>
+                <div class="bg-white/90 px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2">
+                    <span class="text-slate-400">남은 시간:</span>
+                    <span id="hud-timer" class="font-bold text-sky-600 font-mono text-sm">60s</span>
+                </div>
+            </div>
+
+            <button onclick="restartGame()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200">
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                <span>다시 시작</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN 3D VIEWPORT -->
+    <main class="relative flex-1 w-full h-full overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+        
+        <!-- 3D Canvas Target -->
+        <div id="canvas-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+        <!-- OVERLAY 1: START SCREEN -->
+        <div id="overlay-start" class="absolute inset-0 bg-slate-900/40 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center">
+            <div class="glass-card max-w-2xl w-full p-8 rounded-3xl space-y-6 shadow-2xl border border-white/60">
+                <div class="inline-flex p-4 rounded-3xl bg-mint-500 text-white shadow-xl shadow-mint-500/30 mb-1 pulse-glow">
+                    <i data-lucide="flask-conical" class="w-10 h-10"></i>
+                </div>
+                
+                <div>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-2">3D 스마트 메디컬 융합 실험실</h2>
+                    <p class="text-slate-600 text-sm max-w-lg mx-auto leading-relaxed">
+                        <strong class="text-mint-600">간호 임상 판단력</strong>을 기반으로 공학 분야 기술들을 통합해 환자 케어용 스마트 인공장기 시스템을 완성하는 3D 가상 실험 게임입니다.
+                    </p>
+                </div>
+
+                <!-- Department Integration Cards Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-left text-[11px]">
+                    <div class="p-3 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                        <div class="font-bold text-sky-600 mb-0.5 flex items-center gap-1"><i data-lucide="cpu" class="w-3 h-3"></i> 전기전자</div>
+                        <span class="text-slate-500 block leading-tight">바이오 생체 센서 회로 결합</span>
+                    </div>
+                    <div class="p-3 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                        <div class="font-bold text-amber-600 mb-0.5 flex items-center gap-1"><i data-lucide="beaker" class="w-3 h-3"></i> 화학공학</div>
+                        <span class="text-slate-500 block leading-tight">스마트 약물 코팅 배합</span>
+                    </div>
+                    <div class="p-3 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                        <div class="font-bold text-purple-600 mb-0.5 flex items-center gap-1"><i data-lucide="cog" class="w-3 h-3"></i> 기계공학과</div>
+                        <span class="text-slate-500 block leading-tight">유체 펌프 액추에이터 구동</span>
+                    </div>
+                    <div class="p-3 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                        <div class="font-bold text-indigo-600 mb-0.5 flex items-center gap-1"><i data-lucide="bot" class="w-3 h-3"></i> AI & 바이오</div>
+                        <span class="text-slate-500 block leading-tight">이상 징후 분석 & 모니터링</span>
+                    </div>
+                    <div class="p-3 rounded-2xl bg-white border border-mint-200 bg-mint-50/50 col-span-2 sm:col-span-1 shadow-sm">
+                        <div class="font-bold text-mint-600 mb-0.5 flex items-center gap-1"><i data-lucide="heart-pulse" class="w-3 h-3"></i> 간호학과 (1지망)</div>
+                        <span class="text-slate-600 font-medium block leading-tight">최종 임상 투여 및 환자 처치</span>
+                    </div>
+                </div>
+
+                <button onclick="startGame()" class="w-full sm:w-auto px-10 py-4 rounded-2xl btn-primary text-white font-extrabold text-sm transition-all flex items-center justify-center gap-2 mx-auto">
+                    <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+                    <span>3D 융합 실험 게임 시작하기</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- OVERLAY 2: RESULT SCREEN -->
+        <div id="overlay-result" class="hidden absolute inset-0 bg-slate-900/40 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center">
+            <div class="glass-card max-w-md w-full p-8 rounded-3xl space-y-5 shadow-2xl border border-white/60">
+                <div id="result-icon-box" class="w-16 h-16 rounded-2xl bg-mint-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-mint-500/30">
+                    <i data-lucide="award" class="w-8 h-8"></i>
+                </div>
+                <h2 id="result-title" class="text-2xl font-extrabold text-slate-900">실험 성공!</h2>
+                <p id="result-desc" class="text-slate-600 text-xs leading-relaxed">
+                    전기전자 센서, 화학 약물, 기계 펌프, AI 분석 및 간호 처치까지 성공적으로 연동을 마쳤습니다.
+                </p>
+
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2.5 font-mono text-xs text-left">
+                    <div class="flex justify-between"><span class="text-slate-500">최종 실험 점수:</span><span id="res-score" class="font-bold text-amber-500 text-sm">1350 Pt</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">기술 연동 정확도:</span><span id="res-accuracy" class="font-bold text-mint-600 text-sm">98.5%</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">융합 진로 등급:</span><span id="res-rank" class="font-bold text-sky-600 text-sm">S+ (최우수 융합인재)</span></div>
+                </div>
+
+                <button onclick="restartGame()" class="w-full py-3.5 rounded-2xl btn-primary text-white font-bold text-xs transition flex items-center justify-center gap-2">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    <span>다시 도전하기</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- STAGE GUIDE HUD CARD (TOP LEFT) -->
+        <div id="stage-guide-box" class="absolute top-5 left-5 z-10 glass-card p-4 rounded-2xl max-w-xs border border-slate-200 space-y-2">
+            <div class="flex items-center gap-2">
+                <span id="stage-badge" class="px-2.5 py-1 rounded-lg bg-sky-100 border border-sky-200 text-[10px] font-bold text-sky-600 font-mono">MISSION 1/4</span>
+                <span id="stage-dept" class="text-[10px] font-bold text-slate-400 font-mono">전기전자공학</span>
+            </div>
+            <h3 id="stage-title" class="text-sm font-extrabold text-slate-900">생체 센서 회로 정밀 결합</h3>
+            <p id="stage-desc" class="text-xs text-slate-600 leading-relaxed">
+                파란색 전기전자 센서 모듈을 마우스로 드래그하여 중앙 인공장기의 회로 연결부에 조준 결합하세요!
+            </p>
+        </div>
+
+        <!-- STAGE 3 TIMING GAUGE UI -->
+        <div id="timing-game-ui" class="hidden absolute bottom-10 left-1/2 -translate-x-1/2 z-20 w-80 glass-card p-5 rounded-3xl border border-slate-200 text-center space-y-3 shadow-xl">
+            <div class="flex justify-between text-xs font-mono font-bold">
+                <span class="text-slate-500">기계공학 유체 펌프 압력</span>
+                <span id="gauge-val" class="text-purple-600">50%</span>
+            </div>
+            <div class="w-full h-5 bg-slate-200 rounded-full overflow-hidden relative border border-slate-300">
+                <div class="absolute top-0 bottom-0 left-[68%] w-[18%] bg-mint-400/50 border-x-2 border-mint-500 z-0"></div>
+                <div id="gauge-pin" class="absolute top-0 bottom-0 left-0 w-2.5 bg-purple-600 rounded-full shadow-md z-10 transition-all duration-75"></div>
+            </div>
+            <button onclick="checkGaugeTiming()" class="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs shadow-md shadow-purple-600/30 active:scale-95 transition flex items-center justify-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4"></i>
+                <span>적정 압력 순간 구동!</span>
+            </button>
+        </div>
+
+    </main>
+
+    <!-- FOOTER INFO BAR -->
+    <footer class="z-20 px-6 py-3 glass-card border-t border-slate-200 text-xs text-slate-500 flex flex-wrap justify-between items-center gap-2">
+        <div class="flex items-center gap-2 font-medium">
+            <i data-lucide="mouse-pointer" class="w-4 h-4 text-mint-500"></i>
+            <span>3D 조작: 마우스 드래그(회전/이동) 및 클릭(사격 & 구동)</span>
+        </div>
+        <div class="flex items-center gap-3 font-semibold text-[11px] text-slate-400">
+            <span>NURSING</span> • <span>ELEC</span> • <span>CHEM</span> • <span>MECH</span> • <span>AI</span>
+        </div>
+    </footer>
+
+    <!-- GAME LOGIC SCRIPT -->
+    <script>
+        lucide.createIcons();
+
+        /* GAME STATE */
+        let currentStage = 0;
+        let score = 0;
+        let gameTimer = 60;
+        let timerInterval = null;
+
+        // Stage 1
+        let isDraggingSensor = false;
+
+        // Stage 2 (Chem shooter)
+        let chemEnemies = [];
+
+        // Stage 3 (Mech gauge)
+        let gaugePos = 0;
+        let gaugeDirection = 1;
+        let gaugeSpeed = 1.2;
+        let gaugeAnimId = null;
+
+        // Stage 4 (AI Node scan)
+        let aiNodes = [];
+
+        /* THREE.JS SCENE */
+        let scene, camera, renderer;
+        let organMesh, sensorMesh, pumpMesh;
+        let particles = [];
+
+        function init3DScene() {
+            const container = document.getElementById('canvas-container');
+            container.innerHTML = '';
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf1f5f9); // Clean Light Slate Background
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 0, 7);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Bright Clean Lighting
+            const ambient = new THREE.AmbientLight(0xffffff, 0.85);
+            scene.add(ambient);
+
+            const dirLight = new THREE.DirectionalLight(0x10b981, 1.2);
+            dirLight.position.set(4, 6, 5);
+            scene.add(dirLight);
+
+            const blueLight = new THREE.PointLight(0x0284c7, 1, 10);
+            blueLight.position.set(-4, -2, 3);
+            scene.add(blueLight);
+
+            // 1. Central Artificial Organ Mesh (Medical-grade Translucent)
+            const organGeom = new THREE.DodecahedronGeometry(1.3, 1);
+            const organMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.1,
+                metalness: 0.1,
+                wireframe: false,
+                transparent: true,
+                opacity: 0.9
+            });
+            organMesh = new THREE.Mesh(organGeom, organMat);
+            scene.add(organMesh);
+
+            // Core Wire Inner Skeleton
+            const innerGeom = new THREE.IcosahedronGeometry(1.0, 1);
+            const innerMat = new THREE.MeshBasicMaterial({ color: 0x10b981, wireframe: true });
+            const innerMesh = new THREE.Mesh(innerGeom, innerMat);
+            organMesh.add(innerMesh);
+
+            // 2. Stage 1 Electrical Sensor Module Ring
+            const sensorGeom = new THREE.TorusGeometry(0.75, 0.08, 16, 40);
+            const sensorMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5 });
+            sensorMesh = new THREE.Mesh(sensorGeom, sensorMat);
+            sensorMesh.position.set(-2.4, 1.3, 0.2);
+            scene.add(sensorMesh);
+
+            window.addEventListener('resize', onWindowResize);
+            setupInteractions(container);
+            animate3D();
+        }
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+
+            if (organMesh) {
+                organMesh.rotation.y += 0.004;
+                organMesh.rotation.x += 0.002;
+            }
+
+            // Stage 2 Enemies Animation
+            if (currentStage === 2) {
+                chemEnemies.forEach(e => {
+                    e.rotation.x += 0.02;
+                    e.rotation.y += 0.03;
+                    e.position.y += Math.sin(Date.now() * 0.003 + e.id) * 0.003;
+                });
+            }
+
+            // Stage 4 AI Nodes Orbit
+            if (currentStage === 4) {
+                aiNodes.forEach((node, idx) => {
+                    const angle = Date.now() * 0.0015 + idx;
+                    node.position.x = Math.cos(angle) * 2.2;
+                    node.position.y = Math.sin(angle) * 2.2;
+                });
+            }
+
+            // Animate Particles
+            particles.forEach((p, idx) => {
+                p.position.add(p.velocity);
+                p.scale.multiplyScalar(0.95);
+                if (p.scale.x < 0.01) {
+                    scene.remove(p);
+                    particles.splice(idx, 1);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            if(!container || !renderer || !camera) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        /* INTERACTION HANDLING */
+        function setupInteractions(container) {
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+
+            container.addEventListener('pointerdown', (e) => {
+                const rect = renderer.domElement.getBoundingClientRect();
+                mouse.x = ((e.clientX - rect.left) / container.clientWidth) * 2 - 1;
+                mouse.y = -((e.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+                if (currentStage === 1) {
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObject(sensorMesh);
+                    if (intersects.length > 0) isDraggingSensor = true;
+                } else if (currentStage === 2) {
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(chemEnemies);
+                    if (intersects.length > 0) {
+                        hitChemTarget(intersects[0].object);
+                    }
+                } else if (currentStage === 4) {
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(aiNodes);
+                    if (intersects.length > 0) {
+                        scanAINode(intersects[0].object);
+                    }
+                }
+            });
+
+            container.addEventListener('pointermove', (e) => {
+                if (currentStage === 1 && isDraggingSensor) {
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    mouse.x = ((e.clientX - rect.left) / container.clientWidth) * 2 - 1;
+                    mouse.y = -((e.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+                    const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+                    vector.unproject(camera);
+                    const dir = vector.sub(camera.position).normalize();
+                    const distance = (0.2 - camera.position.z) / dir.z;
+                    const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+
+                    sensorMesh.position.x = pos.x;
+                    sensorMesh.position.y = pos.y;
+
+                    // Snap condition to center
+                    if (Math.hypot(pos.x, pos.y) < 0.4) {
+                        isDraggingSensor = false;
+                        sensorMesh.position.set(0, 0, 0);
+                        clearStage1();
+                    }
+                }
+            });
+
+            window.addEventListener('pointerup', () => { isDraggingSensor = false; });
+        }
+
+        /* STAGE FLOWS */
+        function startGame() {
+            document.getElementById('overlay-start').classList.add('hidden');
+            document.getElementById('overlay-result').classList.add('hidden');
+            score = 0;
+            updateHUDScore();
+            init3DScene();
+            startStage1();
+            startTimer();
+        }
+
+        function restartGame() {
+            clearInterval(timerInterval);
+            if(gaugeAnimId) cancelAnimationFrame(gaugeAnimId);
+            chemEnemies.forEach(e => scene.remove(e));
+            aiNodes.forEach(e => scene.remove(e));
+            chemEnemies = [];
+            aiNodes = [];
+            startGame();
+        }
+
+        function startTimer() {
+            gameTimer = 60;
+            document.getElementById('hud-timer').textContent = gameTimer + "s";
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                gameTimer--;
+                document.getElementById('hud-timer').textContent = gameTimer + "s";
+                if (gameTimer <= 0) {
+                    clearInterval(timerInterval);
+                    gameOver(false, "제한시간이 완료되었습니다. 신속한 융합 조작이 필요합니다.");
+                }
+            }, 1000);
+        }
+
+        /* MISSION 1: ELECTRICAL ENG (SENSOR) */
+        function startStage1() {
+            currentStage = 1;
+            document.getElementById('hud-stage-name').textContent = "MISSION 1 (전기전자)";
+            document.getElementById('stage-badge').textContent = "MISSION 1/4";
+            document.getElementById('stage-dept').textContent = "전기전자공학";
+            document.getElementById('stage-title').textContent = "생체 센서 회로 결합";
+            document.getElementById('stage-desc').textContent = "파란색 전기전자 센서 모듈을 마우스로 드래그하여 중앙 인공장기 모듈 회로에 결합하세요!";
+            document.getElementById('timing-game-ui').classList.add('hidden');
+        }
+
+        function clearStage1() {
+            score += 300;
+            updateHUDScore();
+            sensorMesh.material.color.setHex(0x10b981);
+            spawnParticles(new THREE.Vector3(0,0,0), 0x10b981);
+            setTimeout(startStage2, 700);
+        }
+
+        /* MISSION 2: CHEMICAL ENG (DRUG COATING) */
+        function startStage2() {
+            currentStage = 2;
+            document.getElementById('hud-stage-name').textContent = "MISSION 2 (화학공학)";
+            document.getElementById('stage-badge').textContent = "MISSION 2/4";
+            document.getElementById('stage-dept').textContent = "화학공학과";
+            document.getElementById('stage-title').textContent = "표적 약물 나노 코팅";
+            document.getElementById('stage-desc').textContent = "주변에 발생하는 주황색 표적 화학 약물 입자 5개를 클릭해 정밀 분사 코팅하세요!";
+
+            chemEnemies = [];
+            const geom = new THREE.IcosahedronGeometry(0.22);
+            for(let i=0; i<5; i++) {
+                const mat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xb45309 });
+                const mesh = new THREE.Mesh(geom, mat);
+                const angle = (i/5) * Math.PI * 2;
+                mesh.position.set(Math.cos(angle)*2.1, Math.sin(angle)*2.1, 0);
+                mesh.id = i;
+                chemEnemies.push(mesh);
+                scene.add(mesh);
+            }
+        }
+
+        function hitChemTarget(mesh) {
+            spawnParticles(mesh.position, 0xf59e0b);
+            scene.remove(mesh);
+            chemEnemies = chemEnemies.filter(e => e !== mesh);
+            score += 100;
+            updateHUDScore();
+
+            if(chemEnemies.length === 0) {
+                setTimeout(startStage3, 600);
+            }
+        }
+
+        /* MISSION 3: MECHANICAL ENG (PUMP TIMING) */
+        function startStage3() {
+            currentStage = 3;
+            document.getElementById('hud-stage-name').textContent = "MISSION 3 (기계공학)";
+            document.getElementById('stage-badge').textContent = "MISSION 3/4";
+            document.getElementById('stage-dept').textContent = "기계공학과";
+            document.getElementById('stage-title').textContent = "유체 펌프 액추에이터 구동";
+            document.getElementById('stage-desc').textContent = "움직이는 압력 바늘이 녹색 안정 영역(68~86%)에 도달했을 때 하단 버튼을 클릭해 펌프를 구동하세요!";
+            document.getElementById('timing-game-ui').classList.remove('hidden');
+
+            runGaugeLoop();
+        }
+
+        function runGaugeLoop() {
+            if (currentStage !== 3) return;
+            gaugePos += gaugeSpeed * gaugeDirection;
+            if (gaugePos >= 100 || gaugePos <= 0) gaugeDirection *= -1;
+
+            document.getElementById('gauge-pin').style.left = gaugePos + "%";
+            document.getElementById('gauge-val').textContent = Math.round(gaugePos) + "%";
+            gaugeAnimId = requestAnimationFrame(runGaugeLoop);
+        }
+
+        function checkGaugeTiming() {
+            if (currentStage !== 3) return;
+            cancelAnimationFrame(gaugeAnimId);
+
+            if (gaugePos >= 68 && gaugePos <= 86) {
+                score += 400;
+                updateHUDScore();
+                spawnParticles(new THREE.Vector3(0,0,0), 0xa855f7);
+                document.getElementById('timing-game-ui').classList.add('hidden');
+                setTimeout(startStage4, 700);
+            } else {
+                score = Math.max(0, score - 80);
+                updateHUDScore();
+                runGaugeLoop();
+            }
+        }
+
+        /* MISSION 4: AI & NURSING (AI MONITORING & CARE) */
+        function startStage4() {
+            currentStage = 4;
+            document.getElementById('hud-stage-name').textContent = "MISSION 4 (AI & 간호)";
+            document.getElementById('stage-badge').textContent = "MISSION 4/4";
+            document.getElementById('stage-dept').textContent = "AI & 간호학과 (1지망)";
+            document.getElementById('stage-title').textContent = "AI 바이탈 스캔 & 간호 투여";
+            document.getElementById('stage-desc').textContent = "회전하는 보라색 AI 데이터 노드 4개를 클릭 스캔하여 환자의 최종 임상 처치를 완료하세요!";
+
+            aiNodes = [];
+            const geom = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+            for(let i=0; i<4; i++) {
+                const mat = new THREE.MeshStandardMaterial({ color: 0x6366f1, metalness: 0.8 });
+                const mesh = new THREE.Mesh(geom, mat);
+                aiNodes.push(mesh);
+                scene.add(mesh);
+            }
+        }
+
+        function scanAINode(mesh) {
+            spawnParticles(mesh.position, 0x6366f1);
+            scene.remove(mesh);
+            aiNodes = aiNodes.filter(n => n !== mesh);
+            score += 120;
+            updateHUDScore();
+
+            if (aiNodes.length === 0) {
+                clearInterval(timerInterval);
+                setTimeout(() => {
+                    gameOver(true, "축하합니다! 간호학을 기반으로 전기, 기계, 화학, AI 공학 기술을 모두 연동하여 환자의 응급 처치를 완수했습니다.");
+                }, 600);
+            }
+        }
+
+        /* GAME OVER */
+        function gameOver(isSuccess, message) {
+            currentStage = 0;
+            document.getElementById('timing-game-ui').classList.add('hidden');
+            const overlay = document.getElementById('overlay-result');
+            
+            document.getElementById('result-title').textContent = isSuccess ? "융합 케어 실험 성공!" : "실험 실패";
+            document.getElementById('result-desc').textContent = message;
+            document.getElementById('res-score').textContent = score + " Pt";
+            document.getElementById('res-accuracy').textContent = isSuccess ? "99.2%" : "45.0%";
+            document.getElementById('res-rank').textContent = isSuccess ? "S+ (간호 & 공학 융합 인재)" : "TRY AGAIN";
+
+            overlay.classList.remove('hidden');
+        }
+
+        function updateHUDScore() {
+            document.getElementById('hud-score').textContent = score;
+        }
+
+        function spawnParticles(pos, colorHex) {
+            const pGeom = new THREE.SphereGeometry(0.04);
+            const pMat = new THREE.MeshBasicMaterial({ color: colorHex });
+
+            for(let i=0; i<16; i++) {
+                const p = new THREE.Mesh(pGeom, pMat);
+                p.position.copy(pos);
+                p.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.1,
+                    (Math.random() - 0.5) * 0.1,
+                    (Math.random() - 0.5) * 0.1
+                );
+                particles.push(p);
+                scene.add(p);
+            }
+        }
+    </script>
+</body>
+</html>
